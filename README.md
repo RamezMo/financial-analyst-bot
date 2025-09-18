@@ -2,7 +2,7 @@
 
 ## 🚀 Live Demo
 
-[**➡️ Insert Your Live Streamlit App Link Here After Deployment**]
+[**➡️ https://financial-analyst-bot-ramezmo1.streamlit.app/ **]
 
 ---
 
