@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from typing import List, Dict, Optional
@@ -8,6 +9,16 @@ import os
 from engine import FinancialRAGEngine
 
 app = FastAPI(title="Financial Analyst RAG API", version="1.0")
+
+# إضافة CORS عشان الواجهة تقدر تكلم السيرفر بدون قيود أمنية من المتصفح
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # يسمح لأي واجهة (زي Streamlit) بالاتصال
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 rag_engine = FinancialRAGEngine()
 
 class QueryRequest(BaseModel):
@@ -56,5 +67,5 @@ async def upload_document(file: UploadFile = File(...)):
             os.remove(temp_file_path)
 
 if __name__ == "__main__":
-    print("🚀 Starting FastAPI Server on port 8080...")
+    print("🚀 Starting FastAPI Server...")
     uvicorn.run(app, host="0.0.0.0", port=8080)

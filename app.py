@@ -3,6 +3,9 @@ import requests
 
 st.set_page_config(page_title="Financial Analyst AI", page_icon="📈", layout="wide")
 
+# الرابط السحابي الجديد بتاعك على Render
+API_BASE_URL = "https://financial-rag-api-d58u.onrender.com"
+
 # القائمة الجانبية لرفع الملفات
 with st.sidebar:
     st.header("📂 Data Ingestion")
@@ -15,13 +18,14 @@ with st.sidebar:
             with st.spinner("🧠 Analyzing Document & Building Knowledge Graph... This may take a few minutes."):
                 files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
                 try:
-                    response = requests.post("http://localhost:8080/upload", files=files)
+                    # التعديل هنا: استخدام الرابط السحابي
+                    response = requests.post(f"{API_BASE_URL}/upload", files=files)
                     if response.status_code == 200:
                         st.success(f"✅ Document '{uploaded_file.name}' processed successfully!")
                     else:
                         st.error(f"❌ Error processing document: {response.text}")
                 except requests.exceptions.ConnectionError:
-                    st.error("⚠️️ Cannot connect to API. Is the server running on port 8080?")
+                    st.error("⚠️ Cannot connect to API. Please check if the Render server is Live.")
         else:
             st.warning("Please select a file first.")
     
@@ -51,7 +55,8 @@ if prompt := st.chat_input("Ask about financial performance..."):
         full_response = ""
         
         try:
-            url = "http://localhost:8080/chat"
+            # التعديل هنا: استخدام الرابط السحابي للدردشة
+            url = f"{API_BASE_URL}/chat"
             payload = {
                 "query": prompt, 
                 "session_id": "default_session",
@@ -70,7 +75,7 @@ if prompt := st.chat_input("Ask about financial performance..."):
                     st.error(f"API Error: {response.status_code}")
                     
         except requests.exceptions.ConnectionError:
-            st.error("⚠️ Connection Error: Please make sure the FastAPI server (api.py) is running on port 8080.")
+            st.error("⚠️ Connection Error: Could not connect to the Render API.")
             
     if full_response:
         st.session_state.messages.append({"role": "assistant", "content": full_response})
