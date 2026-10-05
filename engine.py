@@ -31,11 +31,13 @@ class FinancialRAGEngine:
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, streaming=True)
         
+        # التعديل هنا: إضافة refresh_schema=False
         self.graph = Neo4jGraph(
             url=NEO4J_URI,
             username=NEO4J_USERNAME,
             password=NEO4J_PASSWORD,
-            database=NEO4J_DATABASE
+            database=NEO4J_DATABASE,
+            refresh_schema=False
         )
         
         self._ensure_indexes()
@@ -174,7 +176,7 @@ Retrieved Context:
         })
 
 
-async def ingest_document(self, file_path: str):
+    async def ingest_document(self, file_path: str):
         """دالة ديناميكية لهضم ملفات الـ PDF الجديدة ورفعها على قاعدة البيانات"""
         logger.info(f"Starting ingestion process for {file_path}")
         
