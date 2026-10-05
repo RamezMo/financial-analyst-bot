@@ -11,19 +11,19 @@ from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 
-
-# إعداد التسجيل (Logging) لمنع التجاهل الصامت للأخطاء
+# إعداد التسجيل
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger("FinancialRAGEngine")
 
-load_dotenv(override=True)
+load_dotenv()  # التعديل هنا: شيلنا override=True
 NEO4J_URI = os.getenv("NEO4J_URI")
 NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
+NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j") # هتفضل neo4j زي ما هي
+
 
 class FinancialRAGEngine:
     def __init__(self):
