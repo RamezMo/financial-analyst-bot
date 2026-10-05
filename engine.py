@@ -12,47 +12,25 @@ from langchain_experimental.text_splitter import SemanticChunker
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 
 # إعداد التسجيل
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("FinancialRAGEngine")
 
-load_dotenv()  # التعديل هنا: شيلنا override=True
+load_dotenv()
 NEO4J_URI = os.getenv("NEO4J_URI")
 NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j") # هتفضل neo4j زي ما هي
-
+NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
 
 class FinancialRAGEngine:
     def __init__(self):
-        logger.info("Initializing Production Financial RAG Engine...")
+        logger.info("Initializing Financial RAG Engine (Lazy Mode)...")
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, streaming=True)
         
-        # التعديل هنا: إضافة refresh_schema=False
-        self.graph = Neo4jGraph(
-            url=NEO4J_URI,
-            username=NEO4J_USERNAME,
-            password=NEO4J_PASSWORD,
-            database=NEO4J_DATABASE,
-            refresh_schema=False
-        )
-        
-        self._ensure_indexes()
-        
-        self.vector_store = Neo4jVector.from_existing_index(
-            embedding=self.embeddings,
-            url=NEO4J_URI,
-            username=NEO4J_USERNAME,
-            password=NEO4J_PASSWORD,
-            database=NEO4J_DATABASE,
-            index_name="financial_bot_index",
-            keyword_index_name="keyword",
-            search_type="hybrid"
-        )
-        self.vector_retriever = self.vector_store.as_retriever(search_kwargs={"k": 4})
+        # هنخلي متغيرات الاتصال فاضية في البداية عشان السيرفر يقوم بسرعة
+        self.graph = None
+        self.vector_store = None
+        self.vector_retriever = None
         
         # 1. طبقة إعادة الصياغة
         rewrite_prompt = PromptTemplate.from_template(
@@ -69,7 +47,7 @@ class FinancialRAGEngine:
         )
         self.entity_extractor = entity_prompt | self.llm | StrOutputParser()
 
-        # 3. الـ Prompt المعتمد (مزود بفهم شامل للهجة المصرية والذاكرة)
+        # 3. الـ Prompt المعتمد
         self.final_prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a highly professional Financial Analyst AI.
 
@@ -86,16 +64,40 @@ Retrieved Context:
             ("human", "{query}")
         ])
 
-    def _ensure_indexes(self):
+    def _connect_db(self):
+        """دالة للاتصال بقاعدة البيانات عند أول استخدام فقط"""
+        if self.graph is not None:
+            return  # متصل بالفعل
+
+        logger.info("Connecting to Neo4j for the first time...")
+        self.graph = Neo4jGraph(
+            url=NEO4J_URI,
+            username=NEO4J_USERNAME,
+            password=NEO4J_PASSWORD,
+            database=NEO4J_DATABASE,
+            refresh_schema=False
+        )
+        
         try:
-            self.graph.query(
-                "CREATE FULLTEXT INDEX entity_id_index IF NOT EXISTS FOR (n:__Entity__) ON EACH [n.id]"
-            )
+            self.graph.query("CREATE FULLTEXT INDEX entity_id_index IF NOT EXISTS FOR (n:__Entity__) ON EACH [n.id]")
             logger.info("Entity full-text index verified/created.")
         except Exception as e:
             logger.warning(f"Unable to create full-text index on entities: {e}")
+        
+        self.vector_store = Neo4jVector.from_existing_index(
+            embedding=self.embeddings,
+            url=NEO4J_URI,
+            username=NEO4J_USERNAME,
+            password=NEO4J_PASSWORD,
+            database=NEO4J_DATABASE,
+            index_name="financial_bot_index",
+            keyword_index_name="keyword",
+            search_type="hybrid"
+        )
+        self.vector_retriever = self.vector_store.as_retriever(search_kwargs={"k": 4})
 
     async def _fetch_graph_facts(self, query: str) -> list[str]:
+        self._connect_db()  # التأكد من الاتصال
         graph_facts = []
         try:
             entities_str = await self.entity_extractor.ainvoke({"query": query})
@@ -139,10 +141,12 @@ Retrieved Context:
         return list(set(graph_facts))
 
     async def process_query_stream(self, user_query: str, chat_history: list = None):
-        # تحويل الذاكرة إلى كائنات تدعمها LangChain (HumanMessage / AIMessage)
+        self._connect_db()  # التأكد من الاتصال
+        
+        # تحويل الذاكرة
         formatted_history = []
         if chat_history:
-            for msg in chat_history[-6:]:  # الاحتفاظ بآخر 6 رسائل فقط
+            for msg in chat_history[-6:]:
                 if msg["role"] == "user":
                     formatted_history.append(HumanMessage(content=msg["content"]))
                 elif msg["role"] == "assistant":
@@ -175,25 +179,20 @@ Retrieved Context:
             "query": user_query
         })
 
-
     async def ingest_document(self, file_path: str):
-        """دالة ديناميكية لهضم ملفات الـ PDF الجديدة ورفعها على قاعدة البيانات"""
+        self._connect_db()  # التأكد من الاتصال
         logger.info(f"Starting ingestion process for {file_path}")
         
-        # 1. تحويل PDF إلى Markdown
         md_text = pymupdf4llm.to_markdown(file_path)
         
-        # 2. التقطيع الهيكلي (بناءً على العناوين)
         headers_to_split_on = [("#", "Header 1"), ("##", "Header 2"), ("###", "Header 3")]
         markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
         md_docs = markdown_splitter.split_text(md_text)
         
-        # 3. التقطيع الدلالي (Semantic Chunking)
         semantic_chunker = SemanticChunker(self.embeddings, breakpoint_threshold_type="percentile")
         final_docs = semantic_chunker.transform_documents(md_docs)
         logger.info(f"Generated {len(final_docs)} semantic chunks.")
 
-        # 4. رفع النصوص كمتجهات (Vector Store)
         Neo4jVector.from_documents(
             final_docs,
             self.embeddings,
@@ -206,17 +205,17 @@ Retrieved Context:
             search_type="hybrid"
         )
         
-        # 5. استخراج الجراف المعرفي (Knowledge Graph)
         llm_transformer = LLMGraphTransformer(
             llm=self.llm,
             allowed_nodes=["Company", "Product", "FinancialMetric", "Person", "Market", "Event"],
             allowed_relationships=["HAS_REVENUE", "ACQUIRED", "COMPETES_WITH", "PRODUCES", "LED_BY", "REPORTED"]
         )
         
-        # هذه الخطوة تستغرق وقتاً لأنها تتصل بـ LLM
         graph_documents = llm_transformer.convert_to_graph_documents(final_docs)
         self.graph.add_graph_documents(graph_documents, baseEntityLabel=True, include_source=True)
         
-        # تحديث الفهارس النصية
-        self._ensure_indexes()
+        try:
+            self.graph.query("CREATE FULLTEXT INDEX entity_id_index IF NOT EXISTS FOR (n:__Entity__) ON EACH [n.id]")
+        except Exception as e:
+            pass
         logger.info("Ingestion completed successfully!")
