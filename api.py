@@ -26,7 +26,8 @@ class QueryRequest(BaseModel):
     session_id: str = "default_session"
     chat_history: Optional[List[Dict[str, str]]] = []
 
-# إضافة الـ Health Check لـ UptimeRobot مع تفعيل Neo4j عشان الداتا بيز متنامش
+# إضافة app.head عشان UptimeRobot بيستخدمه أحياناً للفحص
+@app.head("/")
 @app.get("/")
 def read_root():
     try:
