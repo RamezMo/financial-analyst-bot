@@ -26,6 +26,11 @@ class QueryRequest(BaseModel):
     session_id: str = "default_session"
     chat_history: Optional[List[Dict[str, str]]] = []
 
+# إضافة الـ Health Check لـ UptimeRobot عشان يفضل السيرفر شغال (حل مشكلة 404)
+@app.get("/")
+def read_root():
+    return {"status": "healthy", "message": "Financial Analyst RAG API is running!"}
+
 @app.post("/chat")
 async def chat_stream(request: QueryRequest):
     user_query = request.query
@@ -67,5 +72,7 @@ async def upload_document(file: UploadFile = File(...)):
             os.remove(temp_file_path)
 
 if __name__ == "__main__":
-    print("🚀 Starting FastAPI Server...")
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    # التعديل الاحترافي: قراءة البورت من بيئة التشغيل (Render) أو استخدام 8080 افتراضياً
+    port = int(os.environ.get("PORT", 8080))
+    print(f"🚀 Starting FastAPI Server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port)
